@@ -1,0 +1,21 @@
+description: "A wonderfull bot"
+
+
+# Enter here the Bot token
+bot_token: ""
+
+channels:
+  log: ""
+  warn: ""
+  error: ""
+  report: ""
+
+# Port used by the other service to inform the bot
+socket_port: 25564
+maintainer: maintainer
+
+prefix: "!"
+
+permission:
+  discord: ""
+  sys_admin: ""
