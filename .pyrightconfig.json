@@ -1,0 +1,42 @@
+{
+  "include": [
+    "src"
+  ],
+
+  "exclude": [
+    "**/__pycache__"
+  ],
+
+  "ignore": [
+    "src/tables"
+  ],
+
+  "defineConstant": {
+    "DEBUG": true
+  },
+
+  "stubPath": "src/stubs",
+
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "typeCheckingMode": "basic",
+  "strictListInference": true,
+  "strictDictionaryInference": true,
+  "strictSetInference": true,
+
+  "pythonVersion": "3.10",
+  "pythonPlatform": "All",
+
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "pythonVersion": "3.10",
+      "pythonPlatform": "Windows",
+    },
+    {
+      "root": ".",
+      "pythonVersion": "3.10",
+      "pythonPlatform": "Linux"
+    }
+  ]
+}

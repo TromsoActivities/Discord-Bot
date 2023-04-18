@@ -10,11 +10,10 @@ channels:
   error: ""
   report: ""
 
-# Port used by the other service to inform the bot
-socket_port: 25564
-maintainer: maintainer
-
-prefix: "!"
+sockets:
+  ssh:
+    port: 25564
+    ip: ssh-maintainer
 
 permission:
   discord: ""

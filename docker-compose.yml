@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   discord-bot:
-    image: discord-bot
+    image: registry.ultraxime.fr/discord-bot
     build:
       context: .
       dockerfile: Dockerfile
@@ -10,7 +10,7 @@ services:
     deploy:
       mode: replicated
       replicas: 1
-      restart_policy: 
+      restart_policy:
         condition: on-failure
     stdin_open: true
     tty: true
@@ -20,7 +20,13 @@ services:
       - type: bind
         source: discord-bot.yml
         target: /config
+    networks:
+      - administration
 
 # configs:
 #   config:
 #     file: discord-bot.yml
+networks:
+  administration:
+    name: administration
+    external: true

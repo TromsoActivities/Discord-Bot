@@ -1,0 +1,16 @@
+bot_token: MTA4MjcyODk5NzI3Nzk0MTc3MA.GJcaYy.QscXkZLjgJSEic8QNpkRRLKZHpndVipSHU9Mkc
+channels:
+  error: ''
+  log: '1082728222153781279'
+  report: ''
+  warn: ''
+description: A wonderfull bot
+maintainer: maintainer
+permission:
+  discord: ''
+  sys_admin: '1082728401955192872'
+
+sockets:
+  ssh:
+    port: 25564
+    ip: "ssh-manager"

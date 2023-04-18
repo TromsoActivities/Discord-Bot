@@ -2,7 +2,7 @@
 # @Author: Ultraxime
 # @Date:   2022-06-27 12:01:53
 # @Last Modified by:   Ultraxime
-# @Last Modified time: 2023-03-07 19:04:32
+# @Last Modified time: 2023-03-18 13:35:20
 
 """Module creating a discord bot"""
 
@@ -14,11 +14,13 @@ from asyncio import Future
 import zmq
 import zmq.asyncio
 
-from discord import Guild, Member, User
+from discord import Guild, Member, User, TextChannel, ApplicationContext
 from discord.ext import commands, tasks
-from discord.ext.commands import Context
+from discord.ext.commands import CommandError, Context
 
-from src.config import Config
+
+from .config import Config
+from .commands import Ssh, Funny
 
 
 class Bot(commands.Bot):
@@ -27,16 +29,15 @@ class Bot(commands.Bot):
 
     def __init__(self):
         self.__config = Config("/config")
-        super().__init__(command_prefix=self.__config.get("prefix"),
-                         description=self.__config.get("description"))
-        self.add_command(self.on_ping)
-        self.add_command(self.on_prefix_update)
-        self.add_command(self.on_image_build)
+        super().__init__(description=self.__config.get("description"),
+                         help_command=commands.MinimalHelpCommand())
+        self.add_application_command(Ssh(self))
+        self.add_cog(Funny(self))
 
-        self.zmq_messages_handler.start()
+        self.zmq_messages_handler.start()           # pylint: disable=E1101
 
     def run(self, *args, **kwargs):
-        super().run(self.__config.get("bot_token"), args, kwargs)
+        super().run(self.__config.get("bot_token"))#, args, kwargs)
 
     def get_param(self, param: str):
         """
@@ -64,6 +65,44 @@ class Bot(commands.Bot):
         """
         return self.__config.set(param, value)
 
+    async def _get_channel(self, channel_name: str = 'log') -> TextChannel:
+        channel_id = self.__config.get(f"channels.{channel_name}")
+
+        fall_back = {"report": "log",
+                     "error": "warn",
+                     "warn": "log"}
+
+
+        if channel_id is None or channel_id == "":
+            if channel_name == 'log':
+                raise ValueError(
+                    "No id has been specified for the log channel.")
+            print(f"No id has been specified for the {channel_name} channel.\n"
+                  + f"Falling back on the {fall_back[channel_name]} channel")
+            return await self._get_channel(fall_back[channel_name])
+
+        channel_id = int(channel_id)
+        channel = self.get_channel(channel_id)
+
+        if channel is None:
+            if channel_name == 'log':
+                raise ValueError("The log channel does not exist.")
+            print(f"The {channel_name} channel does not exist.\n"
+                  + f"Falling back on the {fall_back[channel_name]} channel",
+                  file=sys.stderr)
+            return await self._get_channel(fall_back[channel_name])
+
+        if not isinstance(channel, TextChannel):
+            if channel_name == "log":
+                raise ValueError("This log channel is not a text channel.")
+            print(f"The {channel_name} channel is not a text channel.\n"
+                  + f"Falling back on the {fall_back[channel_name]} channel",
+                  file=sys.stderr)
+            return await self._get_channel(fall_back[channel_name])
+
+        return channel
+
+
     async def log(self, msg: str, header: str = "[LOG]") -> None:
         """
         Send a log on discord, through the bot
@@ -80,16 +119,7 @@ class Bot(commands.Bot):
                     When there is no log channel specified in the config file,\
                      or this channel does not exist
         """
-        channel_id = self.__config.get("channels.log")
-
-        if channel_id is None or channel_id == "":
-            raise ValueError("No id has been specified for the log channel.")
-
-        channel_id = int(channel_id)
-        channel = self.get_channel(channel_id)
-
-        if channel is None:
-            raise ValueError("The log channel does not exist.")
+        channel = await self._get_channel("log")
 
         await channel.send(header + " " + msg)
 
@@ -105,24 +135,7 @@ class Bot(commands.Bot):
         :returns:   None
         :rtype:     None
         """
-        channel_id = self.__config.get("channels.warn")
-
-        if channel_id is None or channel_id == "":
-            print("No id has been specified for the warn channel.\n"
-                  + "Falling back on the log channel")
-            await self.log(msg, header)
-            return
-
-        channel_id = int(channel_id)
-        channel = self.get_channel(channel_id)
-
-        if channel is None:
-            print("The warn channel does not exist.\n"
-                  + "Falling back on the log channel",
-                  file=sys.stderr)
-            await self.log(msg, header)
-            return
-
+        channel = await self._get_channel("warn")
         await channel.send(header + " " + msg)
 
     async def error(self, msg: str, header: str = "[ERROR]") -> None:
@@ -137,24 +150,7 @@ class Bot(commands.Bot):
         :returns:   None
         :rtype:     None
         """
-        channel_id = self.__config.get("channels.error")
-
-        if channel_id is None or channel_id == "":
-            print("No id has been specified for the error channel.\n"
-                  + "Falling back on the warn channel")
-            await self.warn(msg, header)
-            return
-
-        channel_id = int(channel_id)
-        channel = self.get_channel(channel_id)
-
-        if channel is None:
-            print("The error channel does not exist.\n"
-                  + "Falling back on the warn channel",
-                  file=sys.stderr)
-            await self.warn(msg, header)
-            return
-
+        channel = await self._get_channel("error")
         await channel.send(header + " " + msg)
 
     async def report(self, msg: str, header: str = "[REPORT]") -> None:
@@ -169,24 +165,7 @@ class Bot(commands.Bot):
         :returns:   None
         :rtype:     None
         """
-        channel_id = self.__config.get("channels.report")
-
-        if channel_id is None or channel_id == "":
-            print("No id has been specified for the report channel.\n"
-                  + "Falling back on the log channel")
-            await self.log(msg, header)
-            return
-
-        channel_id = int(channel_id)
-        channel = self.get_channel(channel_id)
-
-        if channel is None:
-            print("The report channel does not exist.\n"
-                  + "Falling back on the log channel",
-                  file=sys.stderr)
-            await self.log(msg, header)
-            return
-
+        channel = await self._get_channel("report")
         await channel.send(header + " " + msg)
 
     async def on_ready(self) -> None:
@@ -205,108 +184,10 @@ class Bot(commands.Bot):
         print('------')
         await self.log(self.user.name + " is now online.")
 
-    @staticmethod
-    @commands.command(name="ping", help="Plays ping-pong")
-    async def on_ping(ctx: Context):
-        """
-        Called on ping command.
-        Aswer by a pond
-
-        :param      ctx:  The context
-        :type       ctx:  Context
-        """
-        await ctx.send("pong")
-
-    @staticmethod
-    @commands.command(name="update_prefix",
-                      help="Update the prefix of the commands")
-    async def on_prefix_update(ctx: Context, prefix: str) -> None:
-        """
-        Called on prefix update command.
-        Update the prefix of the bot.
-        User must be part of the group of discord administrator\
-            specified in permission.discord in the config file
-
-        :param      ctx:             The context
-        :type       ctx:             Context
-        :param      prefix:          The prefix
-        :type       prefix:          str
-
-        :returns:   None
-        :rtype:     None
-
-        :raises     AssertionError:  Issue with an overriding
-        """
-        assert isinstance(ctx.bot, Bot)
-        assert isinstance(ctx.author, Union[User, Member])
-        if not await Bot.has_permission(ctx,
-                                        ctx.author,
-                                        ctx.bot.get_param("permission.discord")):
-            await ctx.reply("You don,t have the right to perform this command")
-            return
-        ctx.bot.command_prefix = prefix
-        ctx.bot.set_param('prefix', prefix)
-        await ctx.send('Command prefix updated at ' + prefix)
-
-    @staticmethod
-    @commands.command(name="ssh_add_key",
-                      help="Adds a ssh key")
-    async def on_ssh_add_key(ctx: Context, key: str) -> None:
-        """
-        Called on ssh add key command. Adds a ssh key to the servers (redirect
-        and pi) User must be part of the group of system administrator\
-        specified in permission.sys_admin in the config file
-        
-        :param      ctx:             The context
-        :type       ctx:             Context
-        :param      key:             The key
-        :type       key:             str
-        
-        :returns:   None
-        :rtype:     None
-        
-        :raises     AssertionError:  Issues with the typing of the ZMQ lib
-        """
-        assert isinstance(ctx.bot, Bot)
-        assert isinstance(ctx.author, Union[User, Member])
-        if not await Bot.has_permission(ctx,
-                                        ctx.author,
-                                        ctx.bot.get_param("permission.sys_admin")):
-            await ctx.reply("You don,t have the right to perform this command")
-            return
-        print("Starting adding the key")
-        await ctx.send("Starting image builder")
-        context = zmq.asyncio.Context()
-        socket = context.socket(zmq.REQ)
-        socket.connect("tcp://" + ctx.bot.get_param("maintainer")
-                       + ":" + str(ctx.bot.get_param("socket_port")))
-        await socket.send_multipart([b"Ssh Add Key", image.encode("utf-8")])
-        msg = socket.recv_multipart()
-        assert isinstance(msg, Awaitable)
-        await msg
-        assert isinstance(msg, Future)
-        msg = msg.result()
-        if len(msg) != 1:
-            decoded = ""
-            for part in msg:
-                assert isinstance(part, bytes)
-                decoded += part.decode("utf-8") + ", "
-            decoded = decoded[:-2] + "."
-            print("Error: " + decoded,
-                  file=sys.stderr)
-
-            await ctx.send("Adding the key returned an error: " + decoded)
-        else:
-            content = msg[0]
-            assert isinstance(content, bytes)
-            if content == b"ACK":
-                print("Adding the key finished with success")
-                await ctx.send("Adding the key finished with success")
-            else:
-                print("Error: " + content.decode("utf-8"),
-                      file=sys.stderr)
-                await ctx.send("Adding the key returned an error: "
-                               + content.decode("utf-8"))
+    async def on_command_error(self, context: Context, exception: CommandError):
+        await context.reply("The command failed.")
+        print("error")
+        return await super().on_command_error(context, exception)
 
     @tasks.loop(count=1)
     async def zmq_messages_handler(self) -> None:
@@ -319,9 +200,9 @@ class Bot(commands.Bot):
         :raises     AssertionError:  Issues with the typing of the ZMQ lib
         """
         await self.wait_until_ready()
-        context = zmq.asyncio.Context()
+        context = zmq.asyncio.Context()         # pylint: disable=E0110
         socket = context.socket(zmq.REP)
-        socket.bind("tcp://*:" + str(self.__config.get("socket_port")))
+        socket.bind("tcp://*:" + str(self.__config.get("sockets.ssh.port")))
         while not self.is_closed():
             msg = socket.recv_multipart(copy=True)
             assert isinstance(msg, Awaitable)
@@ -358,15 +239,15 @@ class Bot(commands.Bot):
                     print(msg,
                           file=sys.stderr)
 
-    @staticmethod
-    async def has_permission(ctx: Context,
+    async def has_permission(self,
+                             context: ApplicationContext,
                              user: Union[Member, User],
-                             role_id: Union[str, int]) -> bool:
+                             permission: str) -> bool:
         """
         Determines if the user has the permission.
 
-        :param      ctx:             The context
-        :type       ctx:             Context
+        :param      context:             The context
+        :type       context:             Context
         :param      user:            The user
         :type       user:            Union[Member, User]
         :param      role_id:         The role identifier
@@ -381,14 +262,15 @@ class Bot(commands.Bot):
             return False
         assert isinstance(user, Member)
 
+        role_id = self.get_param("permission." + permission)
         if role_id is None or role_id == "":
             return True
-        guild = ctx.guild
+        guild = context.guild
         assert isinstance(guild, Guild)
         role = guild.get_role(int(role_id))
 
         if role is None:
-            await ctx.send("Error: The permission id does not exist.")
+            await context.send("Error: The permission id does not exist.")
             return True
 
         return role in user.roles
